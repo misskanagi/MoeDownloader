@@ -2,15 +2,21 @@
 log_file = log.txt
 
 [web]
-page = 1
-num_to_download = 3
+page_from = 1
+page_to = 1
+num_to_download = -1
 retry_times = 5
 
 [caoliu]
-domain = wo.yao.cl
+domain = t66y.com
 
 [moeimg]
 domain = moeimg.blog133.fc2.com
+tags = true
+
+[jandan]
+domain = jandan.net
+pages_to_download = 5
 
 [file]
 mono = false
