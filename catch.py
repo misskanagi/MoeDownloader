@@ -264,8 +264,8 @@ class CaoliuDownloader(Downloader):
         return href[1]
 
 def main(argv):
-    reload(sys)                         # 2
-    sys.setdefaultencoding('utf-8')     # 3
+    #reload(sys)
+    #sys.setdefaultencoding('utf-8')
     if argv[0] == 'caoliu':
         g = CaoliuDownloader()
     elif argv[0] == 'moeimg':
