@@ -1,0 +1,18 @@
+[basic]
+log_file = log.txt
+
+[web]
+page = 1
+num_to_download = 3
+retry_times = 5
+
+[caoliu]
+domain = wo.yao.cl
+
+[moeimg]
+domain = moeimg.blog133.fc2.com
+
+[file]
+mono = false
+keep_origin_title = true
+
