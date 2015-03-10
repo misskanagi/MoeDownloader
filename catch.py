@@ -364,7 +364,7 @@ class MoeimgDownloader(Downloader):
     def PreHandleTagName(self, local_file):
         if self.moeimgSortWithTags:
             if self.moeimgTags:
-                local_file += self.currentTag.decode('utf-8').encode(sys.getfilesystemencoding()) + '/'
+                local_file += self.currentTag.encode(sys.getfilesystemencoding()) + '/'
             else:
                 local_file += self.currentTag + '/'
             self.DealDir(local_file)
