@@ -33,6 +33,9 @@ class Downloader(object):
         self.loggingFile = 'log.txt'
         self.retryTimes = 5
         self.encode = None
+        self.useProxy = False
+        self.httpProxy = ''
+        self.httpsProxy = ''
 
         #moeimg specific
         self.moeimgdomain = 'example.com'
@@ -73,10 +76,17 @@ class Downloader(object):
         self.jandanPageToDownload = self.cf.getint('jandan','pages_to_download')
         self.moeimgTags = self.cf.getboolean('moeimg','tags')
         self.moeimgSortWithTags = self.cf.getboolean('moeimg','sort_with_tags')
+        self.useProxy = self.cf.getboolean('basic','use_proxy')
+        self.httpProxy = self.cf.get('basic','http_proxy')
+        self.httpsProxy = self.cf.get('basic','https_proxy')
+
 
     def SetDefaultConfig(self):
         self.cf.add_section('basic')
         self.cf.set('basic','log_file','log.txt')
+        self.cf.set('basic','use_proxy','false')
+        self.cf.set('basic','http_proxy','127.0.0.1:1080')
+        self.cf.set('basic','https_proxy','127.0.0.1:1080')
         self.cf.add_section('web')
         self.cf.set('web','page_from','1')
         self.cf.set('web','page_to','1')
@@ -118,9 +128,16 @@ class Downloader(object):
 
     def FetchHtml(self, url):
         retry = 0
+        proxies = {
+            'http':self.httpProxy,
+            'https':self.httpsProxy,
+        }
         while True:
             try:
-                response = requests.get(url)
+                if self.useProxy:
+                    response = requests.get(url, proxies=proxies)
+                else:
+                    response = requests.get(url)
                 if response.status_code != 200:
                     return error("Failed to fetch html. CODE:%i" % response.status_code)
                 elif (response.text) == 0:
@@ -240,9 +257,17 @@ class Downloader(object):
             print('\t=>'+local_filename.encode(sys.getfilesystemencoding()))
             # NOTE the stream=True parameter
             retry = 0
+            proxies = {
+                'http':self.httpProxy,
+                'https':self.httpsProxy,
+            }
+
             while True:
                 try:
-                    r = requests.get(url, stream=True)
+                    if self.useProxy:
+                        r = requests.get(url, stream=True, proxies=proxies)
+                    else:
+                        r = requests.get(url, stream=True)
                     break
                 except requests.ConnectionError:
                     if retry<self.retryTimes:

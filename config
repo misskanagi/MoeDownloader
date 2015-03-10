@@ -1,5 +1,8 @@
 [basic]
 log_file = log.txt
+use_proxy = true
+http_proxy = 192.168.152.1:1080
+https_proxy = 192.168.152.1:1080
 
 [web]
 page_from = 1
