@@ -321,6 +321,19 @@ class MoeimgDownloader(Downloader):
                 if get_error(res):
                     print(get_error(res))
         print("===============   end   ===============")
+    def FetchAllTags(self):
+        res = self.FetchHtml('http://'+self.moeimgdomain+'/blog-entry-2275.html')
+        if get_error(res):
+            return res
+        html = get_val(res)
+        tagRegex = r'<td>\s*<a\s*href=["\']?([^\'" >]+?)[ \'"]\s*>([^<]*)</a>\s*</td>'
+        prog = re.compile(tagRegex, re.IGNORECASE)
+        matches = prog.findall(html)
+        tags = []
+        for m in matches:
+            if re.search('\?tag=', m[0]):
+                tags.append(m[1])
+        return success(tags)
 
     def LoadTags(self):
         if os.path.exists('tags'):
@@ -454,6 +467,11 @@ class JanDanDownloader(Downloader):
 
 def main(argv):
     processed = False
+    helpinfo = "Usage: python catch.py [all|caoliu|moeimg|jandan] [OPTIONS]\n\t-h --help\t\tPrint this help information.\n\t-t --fetch-all-tags\tFetch all tags from site.(Use with moeimg)"
+
+    if '-h' in argv or '--help' in argv:
+        print(helpinfo)
+        processed = True
 
     if 'caoliu' in argv or 'all' in argv:
         print("Processing caoliu...")
@@ -462,7 +480,19 @@ def main(argv):
 
     if 'moeimg' in argv or 'all' in argv:
         print("Processing moeimg...")
-        MoeimgDownloader().Download()
+        if '--fetch-all-tags' in argv or '-t' in argv:
+            moe = MoeimgDownloader()
+            res = moe.FetchAllTags()
+            if get_error(res):
+                print(get_error(res))
+                return
+            tags = get_val(res)
+            with open('all_tags.txt', 'w') as all_tags_file:
+                for t in tags:
+                    all_tags_file.write(t + '\n')
+            print('Fetched all tags.')
+        else:
+            MoeimgDownloader().Download()
         processed = True
 
     if 'jandan' in argv or 'all' in argv:
@@ -471,7 +501,7 @@ def main(argv):
         processed = True
 
     if not processed:
-        print("Usage: python catch.py [all][caoliu][moeimg][jandan]")
+        print(helpinfo)
 
 if __name__ == '__main__':
     reload(sys)
