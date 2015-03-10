@@ -12,7 +12,7 @@ domain = t66y.com
 
 [moeimg]
 domain = moeimg.blog133.fc2.com
-tags = true
+tags = false
 sort_with_tags = true
 
 [jandan]

@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import sys
 import logging
 import os
@@ -19,7 +22,7 @@ class Downloader(object):
 
         self.type = 'none'
         self._isUrlFormat = re.compile(r'https?://([\w-]+\.)+[\w-]+(/[\w\- ./?%&=]*)?');
-        self._path = self.DealDir("Images")
+        self._path = get_val(self.DealDir("Images"))
         self.currentDir = ""
         self.cf = ConfigParser.ConfigParser()
         self.pageNum = 1
@@ -80,24 +83,38 @@ class Downloader(object):
         self.cf.set('web','num_to_download','-1')
         self.cf.set('web','retry_times','5')
         self.cf.add_section('caoliu')
-        self.cf.set('caoliu','domain','example.com')
+        self.cf.set('caoliu','domain','t66y.com')
         self.cf.add_section('moeimg')
-        self.cf.set('moeimg','domain','example.com')
+        self.cf.set('moeimg','domain','moeimg.blog133.fc2.com')
         self.cf.set('moeimg','tags','false')
-        self.cf.set('moeimg','tags','false')
+        self.cf.set('moeimg','sort_with_tags','false')
         self.cf.add_section('jandan')
         self.cf.set('jandan','domain','jandan.net')
         self.cf.set('jandan','pages_to_download','1')
         self.cf.add_section('file')
-        self.cf.set('file','mono','true')
+        self.cf.set('file','mono','false')
         self.cf.set('file','keep_origin_title','false')
         with open('config', 'wb') as configfile:
             self.cf.write(configfile)
 
+    def StripIllegalChar(self, path):
+        return path.strip('>').strip('<').strip('*').strip('|').strip('?').strip(':').strip('"').strip('/')
+
     def DealDir(self, path):
-        if not os.path.exists(path):
-            os.mkdir(path);
-            return path;
+        solved = False
+        while True:
+            try:
+                if not os.path.exists(path):
+                    os.mkdir(path)
+                return success(path)
+            except WindowsError:
+                #windows specific
+                logging.error('Windows error with path %s' % path)
+                if not solved:
+                    path = self.StripIllegalChar(path)
+                    solved = True
+                else:
+                    return error('Invalid path name %s' % path)
 
     def FetchHtml(self, url):
         retry = 0
@@ -127,10 +144,10 @@ class Downloader(object):
         if get_error(res):
             return res
         html = get_val(res)
-        self.FetchThreadsLinks(html);
+        self.FetchPageHtml(html);
         return success(0)
 
-    def FetchThreadsLinks(self, htmlSource):
+    def FetchPageHtml(self, htmlSource):
         prog = re.compile(self.ThreadsRegex, re.IGNORECASE)
         matchesThreads = prog.findall(htmlSource)
         num = 0
@@ -146,13 +163,13 @@ class Downloader(object):
 
                 #TODO: gb2312 bug
                 try:
-                    print(self.currentDir+'/')
+                    print(self.currentDir.encode(sys.getfilesystemencoding())+'/')
                 except UnicodeEncodeError:
                     logging.warning('Unicode encode error at %s' % threadurl)
                     self.currentDir = self.GetCurrentDir(href)
                     print(self.currentDir+'/')
 
-                res = self.FetchImageLinks(threadurl)
+                res = self.FetchThreadHtml(threadurl)
                 if(get_error(res)):
                     print(get_error(res))
                 num+=1
@@ -164,6 +181,7 @@ class Downloader(object):
     def GetTitle(self, href):pass
     def CheckThreadsValid(self, href):pass
     def GetCurrentDir(self, href):pass
+    def GetThreadTagName(self, html):return 'default'
 
     def PreHandleImgLink(self, href):
         return href
@@ -171,15 +189,16 @@ class Downloader(object):
     def PreHandleTagName(self, local_file):
         return local_file
 
-    def FetchImageLinks(self, threadurl):
+    def FetchThreadHtml(self, threadurl):
         res = self.FetchHtml(threadurl)
         if get_error(res):
             return res
         html = get_val(res)
-        self.FetchLinksFromSource(html);
+        self.currentTag = self.GetThreadTagName(html)
+        self.FetchImgLinksFromThread(html);
         return success(html)
 
-    def FetchLinksFromSource(self, htmlSource):
+    def FetchImgLinksFromThread(self, htmlSource):
         prog = re.compile(self.ImgRegex, re.IGNORECASE)
         matchesImgSrc = prog.findall(htmlSource)
         for href in matchesImgSrc:
@@ -189,7 +208,7 @@ class Downloader(object):
                 continue;
             res = self.download_file(href)
             if get_error(res):
-                print(get_error(res))
+                print(get_error(res).encode(sys.getfilesystemencoding()))
 
     def CheckIsUrlFormat(self, value):
         return self._isUrlFormat.match(value) is not None
@@ -205,14 +224,20 @@ class Downloader(object):
             local_filename = "Images/" + dir + '/'
             self.DealDir(local_filename)
             local_filename = self.PreHandleTagName(local_filename)
-            local_filename += self.currentDir + '/'
-            self.DealDir(local_filename)
+            # deal windows directory error
+            res = self.DealDir(local_filename + self.currentDir + '/')
+            if get_error(res):
+                #print(get_error(res))
+                self.DealDir(local_filename + 'tmp/')
+                local_filename += 'tmp/'
+            else:
+                local_filename += self.currentDir + '/'
 
         local_filename = local_filename + url.split('/')[-1]
         if os.path.exists(local_filename):
             return error('\t skip '+local_filename)
         else:
-            print('\t=>'+local_filename)
+            print('\t=>'+local_filename.encode(sys.getfilesystemencoding()))
             # NOTE the stream=True parameter
             retry = 0
             while True:
@@ -259,9 +284,12 @@ class MoeimgDownloader(Downloader):
             for i in range(self.pageNum, self.pageTo+1):
                 if not self.moeimgTags:
                     print("===============   loading page {0}   ===============".format(i))
-                    domain = "http://"+self.moeimgdomain+"/page-{0}.html".format(i-1)
+                    if i == 1:
+                        domain = "http://"+self.moeimgdomain
+                    else:
+                        domain = "http://"+self.moeimgdomain+"/page-{0}.html".format(i-1)
                 else:
-                    print("===============   loading tag: %s page %i  ===============" % (tag,i))
+                    print("===============   loading tag: %s page %i  ===============" % (tag.decode('utf-8').encode(sys.getfilesystemencoding()),i))
                     domain = "http://"+self.moeimgdomain+"/?tag=%s&page=%i" % (tag,i-1)
                     #print(domain)
                 res = self.DoFetch(domain)
@@ -286,9 +314,21 @@ class MoeimgDownloader(Downloader):
         dir = dir.split('.')[-2]
         return dir
 
+    def GetThreadTagName(self, html):
+        tagRegex = r'<li\s*class="path">\s*<a\s*href=["\']?([^\'" >]+?)[ \'"]\s*>([^<]*)</a></li>'
+        prog = re.compile(tagRegex, re.IGNORECASE)
+        matches = prog.findall(html)
+        for m in matches:
+            if re.search('\?tag=',m[0]) or re.search('category',m[0]):
+                return m[1]
+        return 'default'
+
     def PreHandleTagName(self, local_file):
-        if self.moeimgTags and self.moeimgSortWithTags:
-            local_file += self.currentTag + '/'
+        if self.moeimgSortWithTags:
+            if self.moeimgTags:
+                local_file += self.currentTag.decode('utf-8').encode(sys.getfilesystemencoding()) + '/'
+            else:
+                local_file += self.currentTag + '/'
             self.DealDir(local_file)
         return local_file
 
@@ -366,7 +406,7 @@ class JanDanDownloader(Downloader):
         for i in range(self.jandanNewest-self.jandanPageToDownload+1, self.jandanNewest+1):
             print("===============   loading page {0}   ===============".format(i))
             domain = "http://"+self.jandandomain+"/ooxx/page-{0}#comments".format(i)
-            res = self.FetchImageLinks(domain)
+            res = self.FetchThreadHtml(domain)
             if get_error(res):
                 print(get_error(res))
         print("===============   end   ===============")
@@ -410,5 +450,5 @@ def main(argv):
 
 if __name__ == '__main__':
     reload(sys)
-    sys.setdefaultencoding('utf-8')
+    sys.setdefaultencoding(sys.getfilesystemencoding())
     main(sys.argv[1:])
