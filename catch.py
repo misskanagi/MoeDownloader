@@ -34,6 +34,9 @@ class Downloader(object):
         #moeimg specific
         self.moeimgdomain = 'example.com'
         self.moeimgTags = False
+        self.moeimgSortWithTags = False
+
+        self.currentTag = 'default'
 
         #caoliu specific
         self.caoliudomain = 'example.com'
@@ -66,6 +69,7 @@ class Downloader(object):
         self.jandandomain = self.cf.get('jandan','domain')
         self.jandanPageToDownload = self.cf.getint('jandan','pages_to_download')
         self.moeimgTags = self.cf.getboolean('moeimg','tags')
+        self.moeimgSortWithTags = self.cf.getboolean('moeimg','sort_with_tags')
 
     def SetDefaultConfig(self):
         self.cf.add_section('basic')
@@ -79,6 +83,7 @@ class Downloader(object):
         self.cf.set('caoliu','domain','example.com')
         self.cf.add_section('moeimg')
         self.cf.set('moeimg','domain','example.com')
+        self.cf.set('moeimg','tags','false')
         self.cf.set('moeimg','tags','false')
         self.cf.add_section('jandan')
         self.cf.set('jandan','domain','jandan.net')
@@ -163,6 +168,9 @@ class Downloader(object):
     def PreHandleImgLink(self, href):
         return href
 
+    def PreHandleTagName(self, local_file):
+        return local_file
+
     def FetchImageLinks(self, threadurl):
         res = self.FetchHtml(threadurl)
         if get_error(res):
@@ -190,12 +198,17 @@ class Downloader(object):
         dir = self.type
         local_filename = ""
         if self.isMono:
-            self.DealDir("Images/" + dir + '/')
-            local_filename = "Images/"+ dir + '/' + url.split('/')[-1]
+            local_filename = "Images/"+ dir + '/'
+            self.DealDir(local_filename)
+            local_filename = self.PreHandleTagName(local_filename)
         else:
-            self.DealDir("Images/" + dir + '/')
-            self.DealDir("Images/" + dir + '/' + self.currentDir + '/')
-            local_filename = "Images/" + dir + '/' + self.currentDir + '/' + url.split('/')[-1]
+            local_filename = "Images/" + dir + '/'
+            self.DealDir(local_filename)
+            local_filename = self.PreHandleTagName(local_filename)
+            local_filename += self.currentDir + '/'
+            self.DealDir(local_filename)
+
+        local_filename = local_filename + url.split('/')[-1]
         if os.path.exists(local_filename):
             return error('\t skip '+local_filename)
         else:
@@ -242,6 +255,7 @@ class MoeimgDownloader(Downloader):
         i = self.pageNum
         domain = ''
         for tag in tags:
+            self.currentTag = tag
             for i in range(self.pageNum, self.pageTo+1):
                 if not self.moeimgTags:
                     print("===============   loading page {0}   ===============".format(i))
@@ -271,6 +285,12 @@ class MoeimgDownloader(Downloader):
         dir = href[0].split('/')[-1]
         dir = dir.split('.')[-2]
         return dir
+
+    def PreHandleTagName(self, local_file):
+        if self.moeimgTags and self.moeimgSortWithTags:
+            local_file += self.currentTag + '/'
+            self.DealDir(local_file)
+        return local_file
 
     def CheckThreadsValid(self, href):
         return True
@@ -368,8 +388,6 @@ class JanDanDownloader(Downloader):
             return href[0]
 
 def main(argv):
-    #reload(sys)
-    #sys.setdefaultencoding('utf-8')
     processed = False
 
     if 'caoliu' in argv or 'all' in argv:
@@ -391,4 +409,6 @@ def main(argv):
         print("Usage: python catch.py [all][caoliu][moeimg][jandan]")
 
 if __name__ == '__main__':
+    reload(sys)
+    sys.setdefaultencoding('utf-8')
     main(sys.argv[1:])
