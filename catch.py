@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+#
+# bbs mode:
+# You must rewrite Download,GetCurrentDir,CheckThreadsValid,
+# GetThreadUrl and GetTitle function.
+# single-page mode:
+# You must rewrite Download function.
 
 import sys
 import logging
@@ -15,6 +21,8 @@ def error(why): return None,why
 def get_val(m_val): return m_val[0]
 def get_error(m_val): return m_val[1]
 
+init_with_config_file = True
+
 class Downloader(object):
     """docstring for ClassName"""
     def __init__(self):
@@ -27,36 +35,34 @@ class Downloader(object):
         self.cf = ConfigParser.ConfigParser()
         self.pageNum = 1
         self.pageTo = 1
-        self.isMono = True
-        self.keepOriginTitle = False
+        self.isMono = False
+        self.keepOriginTitle = True
         self.numToDownload = -1
         self.loggingFile = 'log.txt'
         self.retryTimes = 5
         self.encode = None
         self.useProxy = False
-        self.httpProxy = ''
-        self.httpsProxy = ''
+        self.httpProxy = '127.0.0.1:1080'
+        self.httpsProxy = '127.0.0.1:1080'
 
         #moeimg specific
-        self.moeimgdomain = 'example.com'
+        self.moeimgdomain = 'moeimg.blog133.fc2.com'
         self.moeimgTags = False
-        self.moeimgSortWithTags = False
-
+        self.moeimgSortWithTags = True
         self.currentTag = 'default'
 
         #caoliu specific
-        self.caoliudomain = 'example.com'
+        self.caoliudomain = 't66y.com'
 
         #jandan specific
-        self.jandandomain = 'example.com'
-        self.jandanNewest = 1346
+        self.jandandomain = 'jandan.net'
         self.jandanPageToDownload = 1
 
-
-        if not os.path.exists('config'):
-            print('No config file. Creating a default one.')
-            self.SetDefaultConfig();
-        self.LoadConfig()
+        if init_with_config_file:
+            if not os.path.exists('config'):
+                print('No config file. Creating a default one.')
+                self.SetDefaultConfig();
+            self.LoadConfig()
 
         #init logging file
         logging.basicConfig(filename = os.path.join(os.getcwd(), self.loggingFile), level = logging.WARN, filemode = 'a+', format = '%(asctime)s - %(levelname)s: %(message)s')
@@ -199,6 +205,7 @@ class Downloader(object):
     def CheckThreadsValid(self, href):pass
     def GetCurrentDir(self, href):pass
     def GetThreadTagName(self, html):return 'default'
+    def Download(self):pass
 
     def PreHandleImgLink(self, href):
         return href
@@ -289,7 +296,7 @@ class MoeimgDownloader(Downloader):
 
         self.type = 'moeimg'
         self.encode = 'utf-8'
-        self.ImgRegex = r'<img\s*src=["\']?([^\'" >]+?)[ \'"]\s*alt="\d*"\s*class="thumbnail_image"'
+        self.ImgRegex = r'<img\s*src=["\']?([^\'" >]+?)[ \'"]\s*(?:alt="\d*")?\s*class="thumbnail_image"'
         self.ThreadsRegex = r'<h[23]\s*class="entry-header"\s*>\s*<a\s*href=["\']?([^\'">]+?)[\'"]\s*title=["\']?([^\'"]+?)[\'"]'
 
     def Download(self):
@@ -438,10 +445,10 @@ class JanDanDownloader(Downloader):
         if get_error(res):
             return res
         html = get_val(res)
-        self.jandanNewest = self.get_max(html)
+        newest = self.get_max(html)
 
         print("===============   start   ===============");
-        for i in range(self.jandanNewest-self.jandanPageToDownload+1, self.jandanNewest+1):
+        for i in range(newest-self.jandanPageToDownload+1, newest+1):
             print("===============   loading page {0}   ===============".format(i))
             domain = "http://"+self.jandandomain+"/ooxx/page-{0}#comments".format(i)
             res = self.FetchThreadHtml(domain)
@@ -466,12 +473,17 @@ class JanDanDownloader(Downloader):
             return href[0]
 
 def main(argv):
+    global init_with_config_file
     processed = False
-    helpinfo = "Usage: python catch.py [all|caoliu|moeimg|jandan] [OPTIONS]\n\t-h --help\t\tPrint this help information.\n\t-t --fetch-all-tags\tFetch all tags from site.(Use with moeimg)"
+    helpinfo = "Usage: python catch.py [all|caoliu|moeimg|jandan] [OPTIONS]\n\t-h --help\t\tPrint this help information.\n\t-t --with-tags\t\tDownload with tags.(Use with moeimg)\n\t-T --fetch-all-tags\tFetch all tags from site.(Use with moeimg)\n\t-i --ignore-config\tIgnore config file and load with default options."
 
     if '-h' in argv or '--help' in argv:
         print(helpinfo)
         processed = True
+
+    # run with default config (ignore config file)
+    if '-i' in argv or '--ignore_config' in argv:
+        init_with_config_file = False
 
     if 'caoliu' in argv or 'all' in argv:
         print("Processing caoliu...")
@@ -480,7 +492,7 @@ def main(argv):
 
     if 'moeimg' in argv or 'all' in argv:
         print("Processing moeimg...")
-        if '--fetch-all-tags' in argv or '-t' in argv:
+        if '--fetch-all-tags' in argv or '-T' in argv:
             moe = MoeimgDownloader()
             res = moe.FetchAllTags()
             if get_error(res):
@@ -491,6 +503,10 @@ def main(argv):
                 for t in tags:
                     all_tags_file.write(t + '\n')
             print('Fetched all tags.')
+        elif '-t' in argv or '--with-tags' in argv:
+            moe = MoeimgDownloader()
+            moe.moeimgTags = True
+            moe.Download()
         else:
             MoeimgDownloader().Download()
         processed = True
@@ -501,7 +517,7 @@ def main(argv):
         processed = True
 
     if not processed:
-        print(helpinfo)
+        print('Nothing to do.:(\nYou can add "-h" option to see help.')
 
 if __name__ == '__main__':
     reload(sys)
