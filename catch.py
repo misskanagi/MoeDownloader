@@ -14,6 +14,7 @@ import os.path
 import requests
 import re
 import ConfigParser
+import argparse
 from HTMLParser import HTMLParser
 
 def success(val): return val,None
@@ -21,6 +22,7 @@ def error(why): return None,why
 def get_val(m_val): return m_val[0]
 def get_error(m_val): return m_val[1]
 
+#global variables
 init_with_config_file = True
 
 class Downloader(object):
@@ -471,55 +473,79 @@ class JanDanDownloader(Downloader):
             return href[1]
         else:
             return href[0]
+def process_pages(d, num):
+    if num > 0:
+        d.pageTo = d.pageNum + num - 1
 
-def main(argv):
+def caoliu(args):
+    print("Processing caoliu...")
+    cl = CaoliuDownloader()
+    if args.pages:
+        process_pages(cl, args.pages)
+    cl.Download()
+
+def moeimg(args):
+    print("Processing moeimg...")
+    moe = MoeimgDownloader()
+    if args.pages:
+        process_pages(moe, args.pages)
+    if args.fetch_all_tags:
+        res = moe.FetchAllTags()
+        if get_error(res):
+            print(get_error(res))
+            return
+        tags = get_val(res)
+        with open('all_tags.txt', 'w') as all_tags_file:
+            for t in tags:
+                all_tags_file.write(t + '\n')
+            print('Fetched all tags.')
+    elif args.with_tags:
+        moe.moeimgTags = True
+        moe.Download()
+    else:
+        MoeimgDownloader().Download()
+
+def jandan(args):
+    print("Processing jandan...")
+    j = JanDanDownloader()
+    if args.pages:
+        j.jandanPageToDownload = args.pages
+    j.Download()
+
+#def all():pass
+
+def main():
     global init_with_config_file
-    processed = False
-    helpinfo = "Usage: python catch.py [all|caoliu|moeimg|jandan] [OPTIONS]\n\t-h --help\t\tPrint this help information.\n\t-t --with-tags\t\tDownload with tags.(Use with moeimg)\n\t-T --fetch-all-tags\tFetch all tags from site.(Use with moeimg)\n\t-i --ignore-config\tIgnore config file and load with default options."
+    ap = argparse.ArgumentParser(description='This tool can download image from some websites. :P',
+                                 epilog=" Please report bugs to https://github.com/KanagiMiss/MoeDownloader/issues")
+    sp = ap.add_subparsers(title='subcommands',
+                           description='available subcommands',
+                           help='subjects that you want to do.')
 
-    if '-h' in argv or '--help' in argv:
-        print(helpinfo)
-        processed = True
+    p_caoliu = sp.add_parser("caoliu", help="download caoliu images.")
+    p_caoliu.set_defaults(func=caoliu)
+    p_moeimg = sp.add_parser("moeimg", help="download moeimg images.")
+    p_moeimg.set_defaults(func=moeimg)
+    p_jandan = sp.add_parser("jandan", help="download jandan images.")
+    p_jandan.set_defaults(func=jandan)
+#   p_all = sp.add_parser("all", help="download all images.")
+
+    gp = ap.add_mutually_exclusive_group()
+    gp.add_argument("-p", "--pages", type=int,
+                    help="number of pages to download.")
+    p_moeimg.add_argument("-T", "--fetch_all_tags", action="store_true", help="fetch all tags from site.")
+    p_moeimg.add_argument("-t", "--with_tags", action="store_true", help="download with tags.")
+    gp.add_argument("-i", "--ignore_config", action="store_true", help="ignore config file and load with default options.")
+    ap.add_argument('--version', action='version', version='%(prog)s 1.0')
+    args = ap.parse_args()
 
     # run with default config (ignore config file)
-    if '-i' in argv or '--ignore_config' in argv:
+    if args.ignore_config:
         init_with_config_file = False
 
-    if 'caoliu' in argv or 'all' in argv:
-        print("Processing caoliu...")
-        CaoliuDownloader().Download()
-        processed = True
-
-    if 'moeimg' in argv or 'all' in argv:
-        print("Processing moeimg...")
-        if '--fetch-all-tags' in argv or '-T' in argv:
-            moe = MoeimgDownloader()
-            res = moe.FetchAllTags()
-            if get_error(res):
-                print(get_error(res))
-                return
-            tags = get_val(res)
-            with open('all_tags.txt', 'w') as all_tags_file:
-                for t in tags:
-                    all_tags_file.write(t + '\n')
-            print('Fetched all tags.')
-        elif '-t' in argv or '--with-tags' in argv:
-            moe = MoeimgDownloader()
-            moe.moeimgTags = True
-            moe.Download()
-        else:
-            MoeimgDownloader().Download()
-        processed = True
-
-    if 'jandan' in argv or 'all' in argv:
-        print("Processing jandan...")
-        JanDanDownloader().Download()
-        processed = True
-
-    if not processed:
-        print('Nothing to do.:(\nYou can add "-h" option to see help.')
+    args.func(args)
 
 if __name__ == '__main__':
     reload(sys)
     sys.setdefaultencoding(sys.getfilesystemencoding())
-    main(sys.argv[1:])
+    main()
