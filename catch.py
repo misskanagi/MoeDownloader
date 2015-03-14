@@ -24,6 +24,7 @@ def get_error(m_val): return m_val[1]
 
 #global variables
 init_with_config_file = True
+has_log_file = True
 
 class Downloader(object):
     """docstring for ClassName"""
@@ -50,7 +51,7 @@ class Downloader(object):
         #moeimg specific
         self.moeimgdomain = 'moeimg.blog133.fc2.com'
         self.moeimgTags = False
-        self.moeimgSortWithTags = True
+        self.moeimgSortWithTags = False
         self.currentTag = 'default'
 
         #caoliu specific
@@ -60,14 +61,16 @@ class Downloader(object):
         self.jandandomain = 'jandan.net'
         self.jandanPageToDownload = 1
 
+        global init_with_config_file
+        global has_log_file
         if init_with_config_file:
             if not os.path.exists('config'):
                 print('No config file. Creating a default one.')
                 self.SetDefaultConfig();
             self.LoadConfig()
-
         #init logging file
-        logging.basicConfig(filename = os.path.join(os.getcwd(), self.loggingFile), level = logging.WARN, filemode = 'a+', format = '%(asctime)s - %(levelname)s: %(message)s')
+        if has_log_file:
+            logging.basicConfig(filename = os.path.join(os.getcwd(), self.loggingFile), level = logging.WARN, filemode = 'a+', format = '%(asctime)s - %(levelname)s: %(message)s')
 
     def LoadConfig(self):
         self.cf.read("config")
@@ -127,7 +130,9 @@ class Downloader(object):
                 return success(path)
             except WindowsError:
                 #windows specific
-                logging.error('Windows error with path %s' % path)
+                global has_log_file
+                if has_log_file:
+                    logging.error('Windows error with path %s' % path)
                 if not solved:
                     path = self.StripIllegalChar(path)
                     solved = True
@@ -161,7 +166,9 @@ class Downloader(object):
                     retry+=1
                     print('Can\'t retrive html. retry %i' % retry)
                     continue
-                logging.error('Can not connect to %s' % url)
+                global has_log_file
+                if has_log_file:
+                    logging.error('Can not connect to %s' % url)
                 return error("The server is not responding.")
 
     def DoFetch(self, domain):
@@ -190,7 +197,9 @@ class Downloader(object):
                 try:
                     print(self.currentDir.encode(sys.getfilesystemencoding())+'/')
                 except UnicodeEncodeError:
-                    logging.warning('Unicode encode error at %s' % threadurl)
+                    global has_log_file
+                    if has_log_file:
+                        logging.warning('Unicode encode error at %s' % threadurl)
                     self.currentDir = self.GetCurrentDir(href)
                     print(self.currentDir+'/')
 
@@ -207,7 +216,8 @@ class Downloader(object):
     def CheckThreadsValid(self, href):pass
     def GetCurrentDir(self, href):pass
     def GetThreadTagName(self, html):return 'default'
-    def Download(self):pass
+    def Download(self):
+        self.init()
 
     def PreHandleImgLink(self, href):
         return href
@@ -283,7 +293,9 @@ class Downloader(object):
                         retry+=1
                         print('\tCan\'t retrive image. retry %i' % retry)
                         continue
-                    logging.error('Can not connect to %s' % url)
+                    global has_log_file
+                    if has_log_file:
+                        logging.error('Can not connect to %s' % url)
                     return error('The server is not responding.')
             with open(local_filename, 'wb') as f:
                 for chunk in r.iter_content(chunk_size=1024):
@@ -298,6 +310,7 @@ class MoeimgDownloader(Downloader):
 
         self.type = 'moeimg'
         self.encode = 'utf-8'
+        self.tag_file = 'tags'
         self.ImgRegex = r'<img\s*src=["\']?([^\'" >]+?)[ \'"]\s*(?:alt="\d*")?\s*class="thumbnail_image"'
         self.ThreadsRegex = r'<h[23]\s*class="entry-header"\s*>\s*<a\s*href=["\']?([^\'">]+?)[\'"]\s*title=["\']?([^\'"]+?)[\'"]'
 
@@ -345,8 +358,8 @@ class MoeimgDownloader(Downloader):
         return success(tags)
 
     def LoadTags(self):
-        if os.path.exists('tags'):
-            tagsfile = open('tags', 'r')
+        if os.path.exists(self.tag_file):
+            tagsfile = open(self.tag_file, 'r')
         else:
             return error('No tags file.')
 
@@ -473,15 +486,35 @@ class JanDanDownloader(Downloader):
             return href[1]
         else:
             return href[0]
+
 def process_pages(d, num):
     if num > 0:
         d.pageTo = d.pageNum + num - 1
+
+def parse_general_args(obj, args):
+    if args.no_log:
+        obj.hasLog = False
+    if args.threads:
+        obj.numToDownload = args.threads
+    if args.proxy:
+        obj.useProxy = True
+        obj.httpProxy = args.proxy
+        obj.httpsProxy = args.proxy
+    if args.direct:
+        obj.useProxy = False
+    if args.retry:
+        obj.retryTimes = args.retry
+    if args.mono:
+        obj.isMono = True
 
 def caoliu(args):
     print("Processing caoliu...")
     cl = CaoliuDownloader()
     if args.pages:
         process_pages(cl, args.pages)
+    if args.domain:
+        cl.caoliudomain = args.domain
+    parse_general_args(cl, args)
     cl.Download()
 
 def moeimg(args):
@@ -489,6 +522,11 @@ def moeimg(args):
     moe = MoeimgDownloader()
     if args.pages:
         process_pages(moe, args.pages)
+    if args.domain:
+        moe.moeimgdomain = args.domain
+    if args.sort_with_tags:
+        moe.moeimgSortWithTags = True
+    parse_general_args(moe, args)
     if args.fetch_all_tags:
         res = moe.FetchAllTags()
         if get_error(res):
@@ -500,6 +538,8 @@ def moeimg(args):
                 all_tags_file.write(t + '\n')
             print('Fetched all tags.')
     elif args.with_tags:
+        if args.tag_file:
+            moe.tag_file = args.tag_file
         moe.moeimgTags = True
         moe.Download()
     else:
@@ -510,38 +550,69 @@ def jandan(args):
     j = JanDanDownloader()
     if args.pages:
         j.jandanPageToDownload = args.pages
+    if args.domain:
+        j.jandandomain = args.domain
+    parse_general_args(j, args)
     j.Download()
 
 #def all():pass
 
 def main():
     global init_with_config_file
-    ap = argparse.ArgumentParser(description='This tool can download image from some websites. :P',
+    global has_log_file
+    ap = argparse.ArgumentParser(description='This tool can download ooxx image from some websites. :P',
                                  epilog=" Please report bugs to https://github.com/KanagiMiss/MoeDownloader/issues")
     sp = ap.add_subparsers(title='subcommands',
                            description='available subcommands',
-                           help='subjects that you want to do.')
+                           help='')
 
-    p_caoliu = sp.add_parser("caoliu", help="download caoliu images.")
+    p_caoliu = sp.add_parser("caoliu", help="download caoliu images")
     p_caoliu.set_defaults(func=caoliu)
-    p_moeimg = sp.add_parser("moeimg", help="download moeimg images.")
+    p_moeimg = sp.add_parser("moeimg", help="download moeimg images")
     p_moeimg.set_defaults(func=moeimg)
-    p_jandan = sp.add_parser("jandan", help="download jandan images.")
+    p_jandan = sp.add_parser("jandan", help="download jandan images")
     p_jandan.set_defaults(func=jandan)
-#   p_all = sp.add_parser("all", help="download all images.")
+#   p_all = sp.add_parser("all", help="download all images")
 
-    gp = ap.add_mutually_exclusive_group()
-    gp.add_argument("-p", "--pages", type=int,
-                    help="number of pages to download.")
-    p_moeimg.add_argument("-T", "--fetch_all_tags", action="store_true", help="fetch all tags from site.")
-    p_moeimg.add_argument("-t", "--with_tags", action="store_true", help="download with tags.")
-    gp.add_argument("-i", "--ignore_config", action="store_true", help="ignore config file and load with default options.")
+    g1 = ap.add_mutually_exclusive_group()
+    g2 = ap.add_mutually_exclusive_group()
+    ap.add_argument("-p", "--pages", type=int,
+                    help="number of pages to download")
+
+    #general options
+    ap.add_argument("-i", "--ignore_config", action="store_true", help="ignore config file and load with default options")
+    ap.add_argument("-n", "--no_log", action="store_true", help="run without log")
+    ap.add_argument("-r", "--retry", type=int, help="retry times if failed")
+    ap.add_argument("-m", "--mono", action="store_true", help="set if mono file")
+    ap.add_argument("-t", "--threads", type=int, help="number of threads to download")
+    g1.add_argument("-q", "--quiet", action="store_true", help="run quietly and briefly")
+    g1.add_argument("-v", "--verbose", action="store_true", help="run verbosely")
+    g2.add_argument("-d", "--direct", action="store_true", help="connect directly(without proxy)")
+    g2.add_argument("--proxy", nargs=1, help='set http and https proxy')
     ap.add_argument('--version', action='version', version='%(prog)s 1.0')
+
+    #moeimg options
+    p_moeimg.add_argument("-T", "--fetch_all_tags", action="store_true", help="fetch all tags from site")
+    p_moeimg.add_argument("-t", "--with_tags", action="store_true", help="download with tags")
+    p_moeimg.add_argument("-s", "--sort_with_tags", action="store_true", help="sort files with tags")
+    p_moeimg.add_argument("--domain", nargs=1, help="set domain")
+    p_moeimg.add_argument("-f", "--tag_file", type=argparse.FileType('r'), help="set specific tag file")
+
+    #caoliu options
+    p_caoliu.add_argument("--domain", nargs=1, help="set domain")
+
+    #jandan options
+    p_jandan.add_argument("--domain", nargs=1, help="set domain")
+
     args = ap.parse_args()
 
     # run with default config (ignore config file)
     if args.ignore_config:
         init_with_config_file = False
+
+    # run without log file
+    if args.no_log:
+        has_log_file = False
 
     args.func(args)
 
