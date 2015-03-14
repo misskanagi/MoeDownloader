@@ -543,7 +543,7 @@ def moeimg(args):
         moe.moeimgTags = True
         moe.Download()
     else:
-        MoeimgDownloader().Download()
+        moe.Download()
 
 def jandan(args):
     print("Processing jandan...")
