@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
+# LICENSE:  see LICENSE file
+#
 # bbs mode:
 # You must rewrite Download,GetCurrentDir,CheckThreadsValid,
 # GetThreadUrl and GetTitle function.
@@ -15,6 +17,7 @@ import requests
 import re
 import ConfigParser
 import argparse
+import imghdr
 from HTMLParser import HTMLParser
 
 def success(val): return val,None
@@ -47,6 +50,7 @@ class Downloader(object):
         self.useProxy = False
         self.httpProxy = '127.0.0.1:1080'
         self.httpsProxy = '127.0.0.1:1080'
+        self.imageCount = 0
 
         #moeimg specific
         self.moeimgdomain = 'moeimg.blog133.fc2.com'
@@ -237,77 +241,106 @@ class Downloader(object):
     def FetchImgLinksFromThread(self, htmlSource):
         prog = re.compile(self.ImgRegex, re.IGNORECASE)
         matchesImgSrc = prog.findall(htmlSource)
+        global has_log_file
+        if not self.isMono:
+            self.imageCount = 0
         for href in matchesImgSrc:
             href = self.PreHandleImgLink(href)
             if not self.CheckIsUrlFormat(href):
-                print('oops')
+            #warning: requests library does not support non-http(s) url
+                print('Invalid url format %s' % href)
+                if has_log_file:
+                    logging.error('Invalid url format %s' % href)
                 continue;
             res = self.download_file(href)
             if get_error(res):
                 print(get_error(res).encode(sys.getfilesystemencoding()))
+            self.imageCount += 1
 
     def CheckIsUrlFormat(self, value):
         return self._isUrlFormat.match(value) is not None
+        
+    def GetImageType(self, img_path):
+        type = imghdr.what(img_path)
+        if type != None:
+            return type
+        else:
+            return "jpg"
+            
+    def ImageExists(self, path, img_name):
+        files = os.listdir(path)
+        for f in files:
+            if img_name == os.path.splitext(f)[0]:
+                return True
+        return False
 
     def download_file(self, url):
         dir = self.type
-        local_filename = ""
+        local_directory = ""
         if self.isMono:
-            local_filename = "Images/"+ dir + '/'
-            self.DealDir(local_filename)
-            local_filename = self.PreHandleTagName(local_filename)
+            local_directory = "Images/"+ dir + '/'
+            self.DealDir(local_directory)
+            local_directory = self.PreHandleTagName(local_directory)
         else:
-            local_filename = "Images/" + dir + '/'
-            self.DealDir(local_filename)
-            local_filename = self.PreHandleTagName(local_filename)
+            local_directory = "Images/" + dir + '/'
+            self.DealDir(local_directory)
+            local_directory = self.PreHandleTagName(local_directory)
             # deal windows directory error
-            res = self.DealDir(local_filename + self.currentDir + '/')
+            res = self.DealDir(local_directory + self.currentDir + '/')
             if get_error(res):
                 #print(get_error(res))
-                self.DealDir(local_filename + 'tmp/')
-                local_filename += 'tmp/'
+                self.DealDir(local_directory + 'tmp/')
+                local_directory += 'tmp/'
             else:
-                local_filename += self.currentDir + '/'
+                local_directory += self.currentDir + '/'
 
-        local_filename = local_filename + url.split('/')[-1]
-        if os.path.exists(local_filename):
-            return error('\t skip '+local_filename)
-        else:
-            print('\t=>'+local_filename.encode(sys.getfilesystemencoding()))
-            # NOTE the stream=True parameter
-            retry = 0
-            proxies = {
-                'http':self.httpProxy,
-                'https':self.httpsProxy,
-            }
-            global has_log_file
-            while True:
-                try:
-                    if self.useProxy:
-                        r = requests.get(url, stream=True, proxies=proxies)
-                    else:
-                        r = requests.get(url, stream=True)
-                    break
-                except requests.ConnectionError:
-                    if retry<self.retryTimes:
-                        retry+=1
-                        print('\tCan\'t retrive image. retry %i' % retry)
-                        continue
-                    if has_log_file:
-                        logging.error('Can not connect to %s' % url)
-                    return error('The server is not responding.')
+        #local_filename = local_filename + self.StripIllegalChar(url.split('/')[-1])#has bug in windows
+        image_path = local_directory + str(self.imageCount)# so use image count instead
+        if self.ImageExists(local_directory, str(self.imageCount)):
+            if not self.isMono:
+                return error('\t skip '+image_path)
+            else:
+                while(self.ImageExists(local_directory, str(self.imageCount))):
+                    self.imageCount+=1
+                image_path = local_directory + str(self.imageCount)
+
+        print('\t=>'+image_path.encode(sys.getfilesystemencoding()))
+        # NOTE the stream=True parameter
+        retry = 0
+        proxies = {
+            'http':self.httpProxy,
+            'https':self.httpsProxy,
+        }
+        global has_log_file
+        while True:
             try:
-                with open(local_filename, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=1024):
-                        if chunk: # filter out keep-alive new chunks
-                            f.write(chunk)
-                            f.flush()
-            except IOError:
+                if self.useProxy:
+                    r = requests.get(url, stream=True, proxies=proxies)
+                else:
+                    r = requests.get(url, stream=True)
+                break
+            except requests.ConnectionError:
+                if retry<self.retryTimes:
+                    retry+=1
+                    print('\tCan\'t retrive image. retry %i' % retry)
+                    continue
                 if has_log_file:
-                    logging.error('Can not save file %s' % url)
-                print('Can\'t save image %s' % url)
-                
-            return success(local_filename)
+                    logging.error('Can not connect to %s' % url)
+                return error('The server is not responding.')
+        try:
+            with open(image_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=1024):
+                    if chunk: # filter out keep-alive new chunks
+                        f.write(chunk)
+                        f.flush()
+            #rename image file by its type
+            os.rename(image_path, local_directory+str(self.imageCount)+"."+self.GetImageType(image_path))
+        except IOError:
+            if has_log_file:
+                logging.error('Can not save file %s' % url)
+            print('Can\'t save image %s' % url)
+            
+        return success(image_path)
 
 class MoeimgDownloader(Downloader):
     def __init__(self):
@@ -406,7 +439,6 @@ class MoeimgDownloader(Downloader):
     def GetTitle(self, href):
         return href[1]
 
-
 class CaoliuDownloader(Downloader):
     def __init__(self):
         super(CaoliuDownloader, self).__init__()
@@ -491,6 +523,48 @@ class JanDanDownloader(Downloader):
             return href[1]
         else:
             return href[0]
+            
+    def download_file(self, url):
+        dir = self.type
+        local_directory = "Images/"+ dir + '/'
+        self.DealDir(local_directory)
+        image_path = local_directory + url.split('/')[-1]
+        if os.path.exists(image_path):
+            return error('\t skip '+image_path)
+        print('\t=>'+image_path.encode(sys.getfilesystemencoding()))
+        # NOTE the stream=True parameter
+        retry = 0
+        proxies = {
+            'http':self.httpProxy,
+            'https':self.httpsProxy,
+        }
+        global has_log_file
+        while True:
+            try:
+                if self.useProxy:
+                    r = requests.get(url, stream=True, proxies=proxies)
+                else:
+                    r = requests.get(url, stream=True)
+                break
+            except requests.ConnectionError:
+                if retry<self.retryTimes:
+                    retry+=1
+                    print('\tCan\'t retrive image. retry %i' % retry)
+                    continue
+                if has_log_file:
+                    logging.error('Can not connect to %s' % url)
+                return error('The server is not responding.')
+        try:
+            with open(image_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=1024):
+                    if chunk: # filter out keep-alive new chunks
+                        f.write(chunk)
+                        f.flush()
+        except IOError:
+            if has_log_file:
+                logging.error('Can not save file %s' % url)
+            print('Can\'t save image %s' % url)
+        return success(image_path)
 
 def process_pages(d, num):
     if num > 0:
