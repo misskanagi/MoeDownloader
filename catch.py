@@ -280,7 +280,7 @@ class Downloader(object):
                 'http':self.httpProxy,
                 'https':self.httpsProxy,
             }
-
+            global has_log_file
             while True:
                 try:
                     if self.useProxy:
@@ -293,15 +293,20 @@ class Downloader(object):
                         retry+=1
                         print('\tCan\'t retrive image. retry %i' % retry)
                         continue
-                    global has_log_file
                     if has_log_file:
                         logging.error('Can not connect to %s' % url)
                     return error('The server is not responding.')
-            with open(local_filename, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=1024):
-                    if chunk: # filter out keep-alive new chunks
-                        f.write(chunk)
-                        f.flush()
+            try:
+                with open(local_filename, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=1024):
+                        if chunk: # filter out keep-alive new chunks
+                            f.write(chunk)
+                            f.flush()
+            except IOError:
+                if has_log_file:
+                    logging.error('Can not save file %s' % url)
+                print('Can\'t save image %s' % url)
+                
             return success(local_filename)
 
 class MoeimgDownloader(Downloader):
@@ -498,8 +503,8 @@ def parse_general_args(obj, args):
         obj.numToDownload = args.threads
     if args.proxy:
         obj.useProxy = True
-        obj.httpProxy = args.proxy
-        obj.httpsProxy = args.proxy
+        obj.httpProxy = args.proxy[0]
+        obj.httpsProxy = args.proxy[0]
     if args.direct:
         obj.useProxy = False
     if args.retry:
