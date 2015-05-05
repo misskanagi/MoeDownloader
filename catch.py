@@ -245,6 +245,7 @@ class Downloader(object):
         if not self.isMono:
             self.imageCount = 0
         for href in matchesImgSrc:
+            print(href)
             href = self.PreHandleImgLink(href)
             if not self.CheckIsUrlFormat(href):
             #warning: requests library does not support non-http(s) url
@@ -350,7 +351,8 @@ class MoeimgDownloader(Downloader):
         self.encode = 'utf-8'
         self.tag_file = 'tags'
         self.ImgRegex = r'<img\s*src=["\']?([^\'" >]+?)[ \'"]\s*(?:alt="\d*")?\s*class="thumbnail_image"'
-        self.ThreadsRegex = r'<h[23]\s*class="entry-header"\s*>\s*<a\s*href=["\']?([^\'">]+?)[\'"]\s*title=["\']?([^\'"]+?)[\'"]'
+        #self.ThreadsRegex = r'<h[23]\s*class="entry-header"\s*>\s*<a\s*href=["\']?([^\'">]+?)[\'"]\s*title=["\']?([^\'"]+?)[\'"]'
+        self.ThreadsRegex = r'<a href="(http://moeimg.net/\d*.html)"\s*target="_blank">([^<]+?)</a>'
 
     def Download(self):
         if self.moeimgTags:
@@ -413,11 +415,12 @@ class MoeimgDownloader(Downloader):
         return dir
 
     def GetThreadTagName(self, html):
-        tagRegex = r'<li\s*class="path">\s*<a\s*href=["\']?([^\'" >]+?)[ \'"]\s*>([^<]*)</a></li>'
+        #tagRegex = r'<li\s*class="path">\s*<a\s*href=["\']?([^\'" >]+?)[ \'"]\s*>([^<]*)</a></li>'
+        tagRegex = r'<li\s*class="tag"><i\s*class="fa fa-tags"></i><a\s*href=["\']?([^\'" >]+?)[ \'"]\s*rel="tag">([^<]*)</a>'
         prog = re.compile(tagRegex, re.IGNORECASE)
         matches = prog.findall(html)
         for m in matches:
-            if re.search('\?tag=',m[0]) or re.search('category',m[0]):
+            if re.search('http://moeimg.net/tag/',m[0]):
                 return m[1]
         return 'default'
 
