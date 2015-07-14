@@ -53,7 +53,7 @@ class Downloader(object):
         self.imageCount = 0
 
         #moeimg specific
-        self.moeimgdomain = 'moeimg.blog133.fc2.com'
+        self.moeimgdomain = 'moeimg.net'
         self.moeimgTags = False
         self.moeimgSortWithTags = False
         self.currentTag = 'default'
@@ -352,7 +352,7 @@ class MoeimgDownloader(Downloader):
         self.tag_file = 'tags'
         self.ImgRegex = r'<img\s*src=["\']?([^\'" >]+?)[ \'"]\s*(?:alt="\d*")?\s*class="thumbnail_image"'
         #self.ThreadsRegex = r'<h[23]\s*class="entry-header"\s*>\s*<a\s*href=["\']?([^\'">]+?)[\'"]\s*title=["\']?([^\'"]+?)[\'"]'
-        self.ThreadsRegex = r'<a href="(http://moeimg.net/\d*.html)"\s*target="_blank">([^<]+?)</a>'
+        self.ThreadsRegex = r'<a href="(http://moeimg.net/\d*.html)"\s*title="[^"]+?">\s*([^<]+?)\s*</a>'
 
     def Download(self):
         if self.moeimgTags:
@@ -374,11 +374,11 @@ class MoeimgDownloader(Downloader):
                     if i == 1:
                         domain = "http://"+self.moeimgdomain
                     else:
-                        domain = "http://"+self.moeimgdomain+"/page-{0}.html".format(i-1)
+                        domain = "http://"+self.moeimgdomain+"/page/{0}".format(i)
                 else:
                     print("===============   loading tag: %s page %i  ===============" % (tag.decode('utf-8').encode(sys.getfilesystemencoding()),i))
                     domain = "http://"+self.moeimgdomain+"/?tag=%s&page=%i" % (tag,i-1)
-                    #print(domain)
+                print(domain)
                 res = self.DoFetch(domain)
                 if get_error(res):
                     print(get_error(res))
