@@ -51,6 +51,8 @@ class Downloader(object):
         self.httpProxy = '127.0.0.1:1080'
         self.httpsProxy = '127.0.0.1:1080'
         self.imageCount = 0
+        self.verbose = False
+        self.silent = False
 
         #moeimg specific
         self.moeimgdomain = 'moeimg.blog133.fc2.com'
@@ -69,12 +71,20 @@ class Downloader(object):
         global has_log_file
         if init_with_config_file:
             if not os.path.exists('config'):
-                print('No config file. Creating a default one.')
+                self.InternalPrint('No config file. Creating a default one.', False)
                 self.SetDefaultConfig();
             self.LoadConfig()
         #init logging file
         if has_log_file:
             logging.basicConfig(filename = os.path.join(os.getcwd(), self.loggingFile), level = logging.WARN, filemode = 'a+', format = '%(asctime)s - %(levelname)s: %(message)s')
+
+    def InternalPrint(self, msg, is_verbose):
+        if not self.silent:
+            if is_verbose:
+                if(self.verbose):
+                    print(msg)
+            else:
+                print(msg)
 
     def LoadConfig(self):
         self.cf.read("config")
@@ -152,6 +162,7 @@ class Downloader(object):
         while True:
             try:
                 if self.useProxy:
+                    self.InternalPrint("Using proxy: http %s, https %s" % (self.httpProxy, self.httpsProxy), True)
                     response = requests.get(url, proxies=proxies)
                 else:
                     response = requests.get(url)
@@ -168,7 +179,7 @@ class Downloader(object):
             except requests.ConnectionError:
                 if retry<self.retryTimes:
                     retry+=1
-                    print('Can\'t retrive html. retry %i' % retry)
+                    self.InternalPrint('Can\'t retrive html. retry %i' % retry, False)
                     continue
                 global has_log_file
                 if has_log_file:
@@ -191,7 +202,7 @@ class Downloader(object):
             if self.CheckThreadsValid(href) is True:
                 #print href
                 threadurl = self.GetThreadUrl(href)
-                print('Thread '+str(num + 1)+':'+threadurl)
+                self.InternalPrint('Thread '+str(num + 1)+':'+threadurl, False)
                 if self.keepOriginTitle:
                     self.currentDir = self.GetTitle(href)
                 else:
@@ -199,17 +210,17 @@ class Downloader(object):
 
                 #TODO: gb2312 bug
                 try:
-                    print(self.currentDir.encode(sys.getfilesystemencoding())+'/')
+                    self.InternalPrint(self.currentDir.encode(sys.getfilesystemencoding())+'/', False)
                 except UnicodeEncodeError:
                     global has_log_file
                     if has_log_file:
                         logging.warning('Unicode encode error at %s' % threadurl)
                     self.currentDir = self.GetCurrentDir(href)
-                    print(self.currentDir+'/')
+                    self.InternalPrint(self.currentDir+'/', False)
 
                 res = self.FetchThreadHtml(threadurl)
                 if(get_error(res)):
-                    print(get_error(res))
+                    self.InternalPrint(get_error(res), False)
                 num+=1
                 if self.numToDownload>0 and num>=self.numToDownload:
                     break
@@ -245,17 +256,17 @@ class Downloader(object):
         if not self.isMono:
             self.imageCount = 0
         for href in matchesImgSrc:
-            print(href)
+            self.InternalPrint(href, False)
             href = self.PreHandleImgLink(href)
             if not self.CheckIsUrlFormat(href):
             #warning: requests library does not support non-http(s) url
-                print('Invalid url format %s' % href)
+                self.InternalPrint('Invalid url format %s' % href, False)
                 if has_log_file:
                     logging.error('Invalid url format %s' % href)
                 continue;
             res = self.download_file(href)
             if get_error(res):
-                print(get_error(res).encode(sys.getfilesystemencoding()))
+                self.InternalPrint(get_error(res).encode(sys.getfilesystemencoding()), False)
             self.imageCount += 1
 
     def CheckIsUrlFormat(self, value):
@@ -289,7 +300,7 @@ class Downloader(object):
             # deal windows directory error
             res = self.DealDir(local_directory + self.currentDir + '/')
             if get_error(res):
-                #print(get_error(res))
+                #self.InternalPrint(get_error(res), False)
                 self.DealDir(local_directory + 'tmp/')
                 local_directory += 'tmp/'
             else:
@@ -305,7 +316,7 @@ class Downloader(object):
                     self.imageCount+=1
                 image_path = local_directory + str(self.imageCount)
 
-        print('\t=>'+image_path.encode(sys.getfilesystemencoding()))
+        self.InternalPrint('\t=>'+image_path.encode(sys.getfilesystemencoding()), False)
         # NOTE the stream=True parameter
         retry = 0
         proxies = {
@@ -316,6 +327,7 @@ class Downloader(object):
         while True:
             try:
                 if self.useProxy:
+                    self.InternalPrint("Using proxy: http %s, https %s" % (self.httpProxy, self.httpsProxy), True)
                     r = requests.get(url, stream=True, proxies=proxies)
                 else:
                     r = requests.get(url, stream=True)
@@ -323,7 +335,7 @@ class Downloader(object):
             except requests.ConnectionError:
                 if retry<self.retryTimes:
                     retry+=1
-                    print('\tCan\'t retrive image. retry %i' % retry)
+                    self.InternalPrint('\tCan\'t retrive image. retry %i' % retry, False)
                     continue
                 if has_log_file:
                     logging.error('Can not connect to %s' % url)
@@ -339,7 +351,7 @@ class Downloader(object):
         except IOError:
             if has_log_file:
                 logging.error('Can not save file %s' % url)
-            print('Can\'t save image %s' % url)
+            self.InternalPrint('Can\'t save image %s' % url, False)
             
         return success(image_path)
 
@@ -358,31 +370,31 @@ class MoeimgDownloader(Downloader):
         if self.moeimgTags:
             res = self.LoadTags()
             if get_error(res):
-                print(get_error(res))
+                self.InternalPrint(get_error(res), False)
                 return
             tags = get_val(res)
         else:
             tags = ['default']
-        print("===============   start   ===============");
+        self.InternalPrint("===============   start   ===============", False)
         i = self.pageNum
         domain = ''
         for tag in tags:
             self.currentTag = tag
             for i in range(self.pageNum, self.pageTo+1):
                 if not self.moeimgTags:
-                    print("===============   loading page {0}   ===============".format(i))
+                    self.InternalPrint("===============   loading page {0}   ===============".format(i), False)
                     if i == 1:
                         domain = "http://"+self.moeimgdomain
                     else:
                         domain = "http://"+self.moeimgdomain+"/page-{0}.html".format(i-1)
                 else:
-                    print("===============   loading tag: %s page %i  ===============" % (tag.decode('utf-8').encode(sys.getfilesystemencoding()),i))
+                    self.InternalPrint("===============   loading tag: %s page %i  ===============" % (tag.decode('utf-8').encode(sys.getfilesystemencoding()),i), False)
                     domain = "http://"+self.moeimgdomain+"/?tag=%s&page=%i" % (tag,i-1)
-                    #print(domain)
+                    #self.InternalPrint(domain, False)
                 res = self.DoFetch(domain)
                 if get_error(res):
-                    print(get_error(res))
-        print("===============   end   ===============")
+                    self.InternalPrint(get_error(res), False)
+        self.InternalPrint("===============   end   ===============", False)
     def FetchAllTags(self):
         res = self.FetchHtml('http://'+self.moeimgdomain+'/blog-entry-2275.html')
         if get_error(res):
@@ -406,7 +418,7 @@ class MoeimgDownloader(Downloader):
         tags = []
         for tag in tagsfile:
             tags.append(tag.strip('\n'))
-        #print(tags)
+        #self.InternalPrint(tags, False)
         return success(tags)
 
     def GetCurrentDir(self, href):
@@ -452,14 +464,14 @@ class CaoliuDownloader(Downloader):
         self.ThreadsRegex = r'<h3><a\s*href\s*=\s*["\']?([^\'">]+?)[ \'"][^>]*?>(?:<font color=green>)?([^<]*)(?:</font>)?</a></h3>'
 
     def Download(self):
-        print("===============   start   ===============");
+        self.InternalPrint("===============   start   ===============", False)
         for i in range(self.pageNum, self.pageTo+1):
-            print("===============   loading page {0}   ===============".format(i))
+            self.InternalPrint("===============   loading page {0}   ===============".format(i), False)
             domain = "http://"+self.caoliudomain+"/thread0806.php?fid=16&search=&page={0}".format(i)
             res = self.DoFetch(domain)
             if get_error(res):
-                print(get_error(res))
-        print("===============   end   ===============")
+                self.InternalPrint(get_error(res), False)
+        self.InternalPrint("===============   end   ===============", False)
 
     def GetCurrentDir(self, href):
         dir = href[0].split('/')[-3] + href[0].split('/')[-2] + href[0].split('/')[-1]
@@ -502,14 +514,14 @@ class JanDanDownloader(Downloader):
         html = get_val(res)
         newest = self.get_max(html)
 
-        print("===============   start   ===============");
+        self.InternalPrint("===============   start   ===============", False)
         for i in range(newest-self.jandanPageToDownload+1, newest+1):
-            print("===============   loading page {0}   ===============".format(i))
+            self.InternalPrint("===============   loading page {0}   ===============".format(i), False)
             domain = "http://"+self.jandandomain+"/ooxx/page-{0}#comments".format(i)
             res = self.FetchThreadHtml(domain)
             if get_error(res):
-                print(get_error(res))
-        print("===============   end   ===============")
+                self.InternalPrint(get_error(res), False)
+        self.InternalPrint("===============   end   ===============", False)
 
     def strip_tags(self, html):
         s = MLStripper()
@@ -534,7 +546,7 @@ class JanDanDownloader(Downloader):
         image_path = local_directory + url.split('/')[-1]
         if os.path.exists(image_path):
             return error('\t skip '+image_path)
-        print('\t=>'+image_path.encode(sys.getfilesystemencoding()))
+        self.InternalPrint('\t=>'+image_path.encode(sys.getfilesystemencoding()), False)
         # NOTE the stream=True parameter
         retry = 0
         proxies = {
@@ -552,7 +564,7 @@ class JanDanDownloader(Downloader):
             except requests.ConnectionError:
                 if retry<self.retryTimes:
                     retry+=1
-                    print('\tCan\'t retrive image. retry %i' % retry)
+                    self.InternalPrint('\tCan\'t retrive image. retry %i' % retry, False)
                     continue
                 if has_log_file:
                     logging.error('Can not connect to %s' % url)
@@ -566,7 +578,7 @@ class JanDanDownloader(Downloader):
         except IOError:
             if has_log_file:
                 logging.error('Can not save file %s' % url)
-            print('Can\'t save image %s' % url)
+            self.InternalPrint('Can\'t save image %s' % url, False)
         return success(image_path)
 
 def process_pages(d, num):
@@ -588,6 +600,10 @@ def parse_general_args(obj, args):
         obj.retryTimes = args.retry
     if args.mono:
         obj.isMono = True
+    if args.verbose:
+        obj.verbose = True
+    if args.quiet:
+        obj.silent = True
 
 def caoliu(args):
     print("Processing caoliu...")
