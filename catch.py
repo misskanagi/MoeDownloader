@@ -245,7 +245,8 @@ class Downloader(object):
         if not self.isMono:
             self.imageCount = 0
         for href in matchesImgSrc:
-            print(href)
+            if self.verbose:
+                print(href)
             href = self.PreHandleImgLink(href)
             if not self.CheckIsUrlFormat(href):
             #warning: requests library does not support non-http(s) url
@@ -352,7 +353,7 @@ class MoeimgDownloader(Downloader):
         self.tag_file = 'tags'
         self.ImgRegex = r'<img\s*src=["\']?([^\'" >]+?)[ \'"]\s*(?:alt="\d*")?\s*class="thumbnail_image"'
         #self.ThreadsRegex = r'<h[23]\s*class="entry-header"\s*>\s*<a\s*href=["\']?([^\'">]+?)[\'"]\s*title=["\']?([^\'"]+?)[\'"]'
-        self.ThreadsRegex = r'<a href="(http://moeimg.net/\d*.html)"\s*title="[^"]+?">\s*([^<]+?)\s*</a>'
+        self.ThreadsRegex = r'<h2 class="title">\s*<a href="(http://moeimg.net/\d*.html)"\s*title="[^"]+?">\s*([^<]+?)\s*</a>\s*</h2>'
 
     def Download(self):
         if self.moeimgTags:
