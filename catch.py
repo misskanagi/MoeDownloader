@@ -14,6 +14,7 @@ import logging
 import os
 import os.path
 import requests
+import requesocks
 import re
 import ConfigParser
 import argparse
@@ -28,6 +29,9 @@ def get_error(m_val): return m_val[1]
 #global variables
 init_with_config_file = True
 has_log_file = True
+
+if os.name != 'nt':
+    WindowsError = OSError
 
 class Downloader(object):
     """docstring for ClassName"""
@@ -53,6 +57,8 @@ class Downloader(object):
         self.imageCount = 0
         self.verbose = False
         self.silent = False
+        self.targetThread = "" # single thread
+        self.targetThreadRegex = ""
 
         #moeimg specific
         self.moeimgdomain = 'moeimg.net'
@@ -161,11 +167,14 @@ class Downloader(object):
         }
         while True:
             try:
+                session = requesocks.session()
                 if self.useProxy:
                     self.InternalPrint("Using proxy: http %s, https %s" % (self.httpProxy, self.httpsProxy), True)
-                    response = requests.get(url, proxies=proxies)
-                else:
-                    response = requests.get(url)
+                    session.proxies = proxies
+                    #response = requests.get(url, proxies=proxies)
+                #else:
+                    #response = requests.get(url)
+                response = session.get(url)
                 if response.status_code != 200:
                     return error("Failed to fetch html. CODE:%i" % response.status_code)
                 elif (response.text) == 0:
@@ -176,7 +185,8 @@ class Downloader(object):
                     #print(response.encoding)
                     #print(response.text)
                     return success(response.text)
-            except requests.ConnectionError:
+            #except requests.ConnectionError:
+            except requesocks.exceptions.ConnectionError:
                 if retry<self.retryTimes:
                     retry+=1
                     self.InternalPrint('Can\'t retrive html. retry %i' % retry, False)
@@ -187,7 +197,9 @@ class Downloader(object):
                 return error("The server is not responding.")
 
     def DoFetch(self, domain):
+        self.InternalPrint("Fetching main html...", True)
         res = self.FetchHtml(domain)
+        self.InternalPrint("Main html fetched.", True)
         if get_error(res):
             return res
         html = get_val(res)
@@ -225,6 +237,40 @@ class Downloader(object):
                 if self.numToDownload>0 and num>=self.numToDownload:
                     break
 
+    def DoFetchSingleThread(self, url):
+        self.InternalPrint('Thread:'+url, False)
+
+        self.InternalPrint("Fetching thread html...", True)
+        res = self.FetchHtml(url)
+        if get_error(res):
+            return res
+        self.InternalPrint("Thread html fetched.", True)
+
+        html = get_val(res)
+        #get current directory
+        if self.keepOriginTitle:
+            # get thread title
+            #self.currentDir = self.GetTitle(href)
+            prog = re.compile(self.targetThreadRegex, re.IGNORECASE)
+            matches = prog.findall(html)
+            self.currentDir = matches[0]
+        else:
+            self.currentDir = url.split('/')[-1].split('.')[-2]
+        #TODO: gb2312 bug
+        try:
+            self.InternalPrint(self.currentDir.encode(sys.getfilesystemencoding())+'/', False)
+        except UnicodeEncodeError:
+            global has_log_file
+            if has_log_file:
+                logging.warning('Unicode encode error at %s' % url)
+            self.currentDir = 'tmp'
+            self.InternalPrint(self.currentDir+'/', False)
+
+        html = get_val(res)
+        self.currentTag = self.GetThreadTagName(html)
+        self.FetchImgLinksFromThread(html);
+        return success(0)
+
     # need to rewrite
     def GetThreadUrl(self, href):pass
     def GetTitle(self, href):pass
@@ -241,7 +287,9 @@ class Downloader(object):
         return local_file
 
     def FetchThreadHtml(self, threadurl):
+        self.InternalPrint("Fetching thread html...", True)
         res = self.FetchHtml(threadurl)
+        self.InternalPrint("Thread html fetched.", True)
         if get_error(res):
             return res
         html = get_val(res)
@@ -271,14 +319,14 @@ class Downloader(object):
 
     def CheckIsUrlFormat(self, value):
         return self._isUrlFormat.match(value) is not None
-        
+
     def GetImageType(self, img_path):
         type = imghdr.what(img_path)
         if type != None:
             return type
         else:
             return "jpg"
-            
+
     def ImageExists(self, path, img_name):
         files = os.listdir(path)
         for f in files:
@@ -326,13 +374,17 @@ class Downloader(object):
         global has_log_file
         while True:
             try:
+                session = requesocks.session()
                 if self.useProxy:
                     self.InternalPrint("Using proxy: http %s, https %s" % (self.httpProxy, self.httpsProxy), True)
-                    r = requests.get(url, stream=True, proxies=proxies)
-                else:
-                    r = requests.get(url, stream=True)
+                    session.proxies = proxies
+                    #r = requests.get(url, stream=True, proxies=proxies)
+                #else:
+                    #r = requests.get(url, stream=True)
+                r = session.get(url)
                 break
-            except requests.ConnectionError:
+            #except requests.ConnectionError:
+            except requesocks.exceptions.ConnectionError:
                 if retry<self.retryTimes:
                     retry+=1
                     self.InternalPrint('\tCan\'t retrive image. retry %i' % retry, False)
@@ -352,7 +404,7 @@ class Downloader(object):
             if has_log_file:
                 logging.error('Can not save file %s' % url)
             self.InternalPrint('Can\'t save image %s' % url, False)
-            
+
         return success(image_path)
 
 class MoeimgDownloader(Downloader):
@@ -365,6 +417,7 @@ class MoeimgDownloader(Downloader):
         self.ImgRegex = r'<img\s*src=["\']?([^\'" >]+?)[ \'"]\s*(?:alt="\d*")?\s*class="thumbnail_image"'
         #self.ThreadsRegex = r'<h[23]\s*class="entry-header"\s*>\s*<a\s*href=["\']?([^\'">]+?)[\'"]\s*title=["\']?([^\'"]+?)[\'"]'
         self.ThreadsRegex = r'<h2 class="title">\s*<a href="(http://moeimg.net/\d*.html)"\s*title="[^"]+?">\s*([^<]+?)\s*</a>\s*</h2>'
+        self.targetThreadRegex = r'<div\s*class="post">\s*<h1\s*class="title">\s*([^<]+?)\s*</h1>'
 
     def Download(self):
         if self.moeimgTags:
@@ -380,21 +433,28 @@ class MoeimgDownloader(Downloader):
         domain = ''
         for tag in tags:
             self.currentTag = tag
-            for i in range(self.pageNum, self.pageTo+1):
-                if not self.moeimgTags:
-                    self.InternalPrint("===============   loading page {0}   ===============".format(i), False)
-                    if i == 1:
-                        domain = "http://"+self.moeimgdomain
+            if self.targetThread == "":
+                for i in range(self.pageNum, self.pageTo+1):
+                    if not self.moeimgTags:
+                        self.InternalPrint("===============   loading page {0}   ===============".format(i), False)
+                        if i == 1:
+                            domain = "http://"+self.moeimgdomain
+                        else:
+                            domain = "http://"+self.moeimgdomain+"/page/{0}".format(i)
                     else:
-                        domain = "http://"+self.moeimgdomain+"/page/{0}".format(i)
-                else:
-                    self.InternalPrint("===============   loading tag: %s page %i  ===============" % (tag.decode('utf-8').encode(sys.getfilesystemencoding()),i), False)
-                    domain = "http://"+self.moeimgdomain+"/?tag=%s&page=%i" % (tag,i-1)
-                    #self.InternalPrint(domain, False)
-                res = self.DoFetch(domain)
+                        self.InternalPrint("===============   loading tag: %s page %i  ===============" % (tag.decode('utf-8').encode(sys.getfilesystemencoding()),i), False)
+                        domain = "http://"+self.moeimgdomain+"/?tag=%s&page=%i" % (tag,i-1)
+                        #self.InternalPrint(domain, False)
+                    res = self.DoFetch(domain)
+                    if get_error(res):
+                        self.InternalPrint(get_error(res), False)
+            else:
+                self.InternalPrint("===============   loading target thread {0}   ===============".format(self.targetThread), False)
+                res = self.DoFetchSingleThread(self.targetThread)
                 if get_error(res):
                     self.InternalPrint(get_error(res), False)
         self.InternalPrint("===============   end   ===============", False)
+
     def FetchAllTags(self):
         res = self.FetchHtml('http://'+self.moeimgdomain+'/blog-entry-2275.html')
         if get_error(res):
@@ -462,13 +522,20 @@ class CaoliuDownloader(Downloader):
         self.encode = 'gbk'
         self.ImgRegex = r'<input\s*type=\'image\'\s*src\s*=\s*["\']?([^\'" >]+?)[ \'"]'
         self.ThreadsRegex = r'<h3><a\s*href\s*=\s*["\']?([^\'">]+?)[ \'"][^>]*?>(?:<font color=green>)?([^<]*)(?:</font>)?</a></h3>'
+        self.targetThreadRegex = r'<tr><td\s*class="h"> --> <b>[^<]+?</b>\s*([^<]+?)\s*</td>'
 
     def Download(self):
         self.InternalPrint("===============   start   ===============", False)
-        for i in range(self.pageNum, self.pageTo+1):
-            self.InternalPrint("===============   loading page {0}   ===============".format(i), False)
-            domain = "http://"+self.caoliudomain+"/thread0806.php?fid=16&search=&page={0}".format(i)
-            res = self.DoFetch(domain)
+        if self.targetThread == "":
+            for i in range(self.pageNum, self.pageTo+1):
+                self.InternalPrint("===============   loading page {0}   ===============".format(i), False)
+                domain = "http://"+self.caoliudomain+"/thread0806.php?fid=16&search=&page={0}".format(i)
+                res = self.DoFetch(domain)
+                if get_error(res):
+                    self.InternalPrint(get_error(res), False)
+        else:
+            self.InternalPrint("===============   loading target thread {0}   ===============".format(self.targetThread), False)
+            res = self.DoFetchSingleThread(self.targetThread)
             if get_error(res):
                 self.InternalPrint(get_error(res), False)
         self.InternalPrint("===============   end   ===============", False)
@@ -510,6 +577,7 @@ class JanDanDownloader(Downloader):
         #get max
         res = self.FetchHtml("http://"+self.jandandomain+"/ooxx")
         if get_error(res):
+            self.InternalPrint(get_error(res), False)
             return res
         html = get_val(res)
         newest = self.get_max(html)
@@ -538,7 +606,7 @@ class JanDanDownloader(Downloader):
             return href[1]
         else:
             return href[0]
-            
+
     def download_file(self, url):
         dir = self.type
         local_directory = "Images/"+ dir + '/'
@@ -590,6 +658,8 @@ def parse_general_args(obj, args):
         obj.hasLog = False
     if args.threads:
         obj.numToDownload = args.threads
+    if args.single:
+        obj.targetThread = args.single[0]
     if args.proxy:
         obj.useProxy = True
         obj.httpProxy = args.proxy[0]
@@ -606,17 +676,16 @@ def parse_general_args(obj, args):
         obj.silent = True
 
 def caoliu(args):
-    print("Processing caoliu...")
     cl = CaoliuDownloader()
     if args.pages:
         process_pages(cl, args.pages)
     if args.domain:
         cl.caoliudomain = args.domain
     parse_general_args(cl, args)
+    cl.InternalPrint("Processing caoliu...", False)
     cl.Download()
 
 def moeimg(args):
-    print("Processing moeimg...")
     moe = MoeimgDownloader()
     if args.pages:
         process_pages(moe, args.pages)
@@ -625,6 +694,7 @@ def moeimg(args):
     if args.sort_with_tags:
         moe.moeimgSortWithTags = True
     parse_general_args(moe, args)
+    moe.InternalPrint("Processing moeimg...", False)
     if args.fetch_all_tags:
         res = moe.FetchAllTags()
         if get_error(res):
@@ -644,13 +714,13 @@ def moeimg(args):
         moe.Download()
 
 def jandan(args):
-    print("Processing jandan...")
     j = JanDanDownloader()
     if args.pages:
         j.jandanPageToDownload = args.pages
     if args.domain:
         j.jandandomain = args.domain
     parse_general_args(j, args)
+    j.InternalPrint("Processing jandan...", False)
     j.Download()
 
 #def all():pass
@@ -683,6 +753,7 @@ def main():
     ap.add_argument("-r", "--retry", type=int, help="retry times if failed")
     ap.add_argument("-m", "--mono", action="store_true", help="set if mono file")
     ap.add_argument("-t", "--threads", type=int, help="number of threads to download")
+    ap.add_argument("-S", "--single", nargs=1, help="download single thread")
     g1.add_argument("-q", "--quiet", action="store_true", help="run quietly and briefly")
     g1.add_argument("-v", "--verbose", action="store_true", help="run verbosely")
     g2.add_argument("-d", "--direct", action="store_true", help="connect directly(without proxy)")
