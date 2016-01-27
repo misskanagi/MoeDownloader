@@ -126,7 +126,7 @@ class Downloader(object):
         self.cf.add_section('caoliu')
         self.cf.set('caoliu','domain','t66y.com')
         self.cf.add_section('moeimg')
-        self.cf.set('moeimg','domain','moeimg.blog133.fc2.com')
+        self.cf.set('moeimg','domain','moeimg.net')
         self.cf.set('moeimg','tags','false')
         self.cf.set('moeimg','sort_with_tags','false')
         self.cf.add_section('jandan')
@@ -134,7 +134,7 @@ class Downloader(object):
         self.cf.set('jandan','pages_to_download','1')
         self.cf.add_section('file')
         self.cf.set('file','mono','false')
-        self.cf.set('file','keep_origin_title','false')
+        self.cf.set('file','keep_origin_title','true')
         with open('config', 'wb') as configfile:
             self.cf.write(configfile)
 
