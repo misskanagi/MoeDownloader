@@ -165,25 +165,29 @@ class Downloader(object):
             'http':self.httpProxy,
             'https':self.httpsProxy,
         }
+        headers = {
+            'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_2) AppleWebKit/601.3.9 (KHTML, like Gecko) Version/9.0.2 Safari/601.3.9',
+            'Referer':'http://jandan.net/'
+        }
         while True:
             try:
+                self.InternalPrint("Fetching HTML: %s" % url, True)
                 session = requesocks.session()
+                session.headers = headers;
                 if self.useProxy:
                     self.InternalPrint("Using proxy: http %s, https %s" % (self.httpProxy, self.httpsProxy), True)
                     session.proxies = proxies
-                    #response = requests.get(url, proxies=proxies)
-                #else:
-                    #response = requests.get(url)
+                else:
+                    self.InternalPrint("No proxy.", True)
                 response = session.get(url)
                 if response.status_code != 200:
+                    self.InternalPrint(response.text, True)
                     return error("Failed to fetch html. CODE:%i" % response.status_code)
                 elif (response.text) == 0:
                     return error("Empty html.")
                 else:
                     if self.encode != None:
                         response.encoding = self.encode
-                    #print(response.encoding)
-                    #print(response.text)
                     return success(response.text)
             #except requests.ConnectionError:
             except requesocks.exceptions.ConnectionError:
@@ -520,7 +524,7 @@ class CaoliuDownloader(Downloader):
 
         self.type = 'caoliu'
         self.encode = 'gbk'
-        self.ImgRegex = r'<input\s*type=\'image\'\s*src\s*=\s*["\']?([^\'" >]+?)[ \'"]'
+        self.ImgRegex = r'<input\s*src\s*=\s*["\']?([^\'" >]+?)[ \'"]\s*type=\'image\''
         self.ThreadsRegex = r'<h3><a\s*href\s*=\s*["\']?([^\'">]+?)[ \'"][^>]*?>(?:<font color=green>)?([^<]*)(?:</font>)?</a></h3>'
         self.targetThreadRegex = r'<tr><td\s*class="h"> --> <b>[^<]+?</b>\s*([^<]+?)\s*</td>'
 
@@ -571,7 +575,7 @@ class JanDanDownloader(Downloader):
 
         self.type = 'jandan'
         self.encode = 'utf-8'
-        self.ImgRegex = r'<p><img\s*src=["\']?([^\'" >]+?)[ \'"]\s*(?:org_src=["\']?([^\'" >]+?)[ \'"])?'
+        self.ImgRegex = r'<p>\s*<a\s*href=["\']?([^\'" >]+?)[ \'"]\s*target="_blank"\s*class="view_img_link"\s*>'
 
     def Download(self):
         #get max
@@ -600,12 +604,6 @@ class JanDanDownloader(Downloader):
         m = re.search('.+cp-pagenavi.+', html_code)
         m = re.search('\d+', self.strip_tags(m.group(0)).strip())
         return int(m.group(0))
-
-    def PreHandleImgLink(self, href):
-        if href[1] != '':
-            return href[1]
-        else:
-            return href[0]
 
     def download_file(self, url):
         dir = self.type
