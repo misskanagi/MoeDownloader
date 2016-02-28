@@ -446,8 +446,10 @@ class MoeimgDownloader(Downloader):
                             domain = "http://"+self.moeimgdomain+"/page/{0}".format(i)
                     else:
                         self.InternalPrint("===============   loading tag: %s page %i  ===============" % (tag.decode('utf-8').encode(sys.getfilesystemencoding()),i), False)
-                        domain = "http://"+self.moeimgdomain+"/?tag=%s&page=%i" % (tag,i-1)
-                        #self.InternalPrint(domain, False)
+                        if i == 1:
+                            domain = "http://"+self.moeimgdomain+"/tag/%s" % (tag)
+                        else:
+                            domain = "http://"+self.moeimgdomain+"/tag/%s/page/%i" % (tag,i)
                     res = self.DoFetch(domain)
                     if get_error(res):
                         self.InternalPrint(get_error(res), False)
@@ -459,17 +461,19 @@ class MoeimgDownloader(Downloader):
         self.InternalPrint("===============   end   ===============", False)
 
     def FetchAllTags(self):
-        res = self.FetchHtml('http://'+self.moeimgdomain+'/blog-entry-2275.html')
+        res = self.FetchHtml('http://'+self.moeimgdomain+'/taglist')
         if get_error(res):
             return res
         html = get_val(res)
-        tagRegex = r'<td>\s*<a\s*href=["\']?([^\'" >]+?)[ \'"]\s*>([^<]*)</a>\s*</td>'
+        tagRegex = r'<a\s*href=[\'"]([^\'"]+?)[\'"]\s*class=[\'"][^\'"]*[\'"]\s*title=[\'"][^\'"]*[\'"]\s*style=[\'"][^\'"]*[\'"]>([^<]+?)</a>'
         prog = re.compile(tagRegex, re.IGNORECASE)
         matches = prog.findall(html)
         tags = []
         for m in matches:
-            if re.search('\?tag=', m[0]):
-                tags.append(m[1])
+            if re.search('tag', m[0]):
+                if not m[1] in tags:
+                    tags.append(m[1])
+        self.InternalPrint('Fetched %s tags.' % len(tags), True)
         return success(tags)
 
     def LoadTags(self):
@@ -480,8 +484,8 @@ class MoeimgDownloader(Downloader):
 
         tags = []
         for tag in tagsfile:
-            tags.append(tag.strip('\n'))
-        #self.InternalPrint(tags, False)
+            tags.append(tag.strip('\n').strip(';').decode('utf-8').replace(' ', '-').lower())
+        self.InternalPrint('Loaded %s tags.' % len(tags), True)
         return success(tags)
 
     def GetCurrentDir(self, href):
